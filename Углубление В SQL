@@ -106,12 +106,12 @@ create table film_new (
 --·   	  film_duration - array[142, 189, 116, 142, 195]
 
 insert into film_new (film_name, film_year, film_rental_rate, film_duration)
-        values 
-        (unnest (array['The Shawshank Redemption', 'The Green Mile', 'Back to the Future', 'Forrest Gump', 'Schindlers List']),
-        unnest (array[1994, 1999, 1985, 1994, 1993]),
-        unnest (array[2.99, 0.99, 1.99, 2.99, 3.99]),
-        unnest (array[142, 189, 116, 142, 195])
-        );
+select * 
+from unnest(
+array['The Shawshank Redemption', 'The Green Mile', 'Back to the Future', 'Forrest Gump', 'Schindler’s List'],
+array[1994, 1999, 1985, 1994, 1993],
+array[2.99, 0.99, 1.99, 2.99, 3.99],
+array[142, 189, 116, 142, 195])
 
 --ЗАДАНИЕ №3
 --Обновите стоимость аренды фильмов в таблице film_new с учетом информации, 
@@ -136,7 +136,7 @@ values ('The English patient', 1996, 5.5, 162)
 --Напишите SQL-запрос, который выведет все колонки из таблицы film_new, 
 --а также новую вычисляемую колонку "длительность фильма в часах", округлённую до десятых
 
-select * , round (film_duration::numeric/60, 1) as "Длительность фильма в часах"
+select *, round(film_duration / 60., 1)
 from film_new
 
 --ЗАДАНИЕ №7 
