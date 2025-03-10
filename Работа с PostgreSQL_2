@@ -1,0 +1,177 @@
+--=============== МОДУЛЬ 6. POSTGRESQL =======================================
+--= ПОМНИТЕ, ЧТО НЕОБХОДИМО УСТАНОВИТЬ ВЕРНОЕ СОЕДИНЕНИЕ И ВЫБРАТЬ СХЕМУ PUBLIC===========
+SET search_path TO public;
+
+--======== ОСНОВНАЯ ЧАСТЬ ==============
+
+--ЗАДАНИЕ №1
+--Напишите SQL-запрос, который выводит всю информацию о фильмах 
+--со специальным атрибутом "Behind the Scenes".
+
+select film_id , title , special_features
+from film f 
+where array [special_features] && array ['Behind the Scenes']
+order by film_id 
+
+--ЗАДАНИЕ №2
+--Напишите еще 2 варианта поиска фильмов с атрибутом "Behind the Scenes",
+--используя другие функции или операторы языка SQL для поиска значения в массиве.
+
+select film_id , title , special_features 
+from film f 
+where 'Behind the Scenes'=any (array [special_features])
+order by film_id 
+
+SELECT	film_id, title, special_features
+from film f
+WHERE array [special_features]::text LIKE '%Behind the Scenes%' 
+
+select film_id , title , special_features 
+from film f 
+where array_position(special_features, 'Behind the Scenes') is not null
+order by film_id 
+
+--ЗАДАНИЕ №3
+--Для каждого покупателя посчитайте сколько он брал в аренду фильмов 
+--со специальным атрибутом "Behind the Scenes.
+
+--Обязательное условие для выполнения задания: используйте запрос из задания 1, 
+--помещенный в CTE. CTE необходимо использовать для решения задания.
+
+with cte as(
+     select film_id , title , special_features 
+from film f 
+where special_features && array ['Behind the Scenes']
+order by film_id)
+select c.customer_id , count(cte.film_id)
+from customer c
+join rental r on c.customer_id = r.customer_id 
+join inventory i on r.inventory_id = i.inventory_id 
+join cte on i.film_id = cte.film_id 
+group by c.customer_id 
+order by c.customer_id 
+
+--ЗАДАНИЕ №4
+--Для каждого покупателя посчитайте сколько он брал в аренду фильмов
+-- со специальным атрибутом "Behind the Scenes".
+
+--Обязательное условие для выполнения задания: используйте запрос из задания 1,
+--помещенный в подзапрос, который необходимо использовать для решения задания.
+
+select c.customer_id, count (f.film_id)
+from (
+     select film_id , title , special_features 
+     from film 
+     where special_features && array ['Behind the Scenes']
+     order by film_id ) f
+join inventory i on f.film_id = i.film_id 
+join rental r on i.inventory_id = r.inventory_id 
+join customer c on r.customer_id = c.customer_id 
+group by c.customer_id 
+order by c.customer_id 
+
+--ЗАДАНИЕ №5
+--Создайте материализованное представление с запросом из предыдущего задания
+--и напишите запрос для обновления материализованного представления
+
+create materialized view film_c as
+    select c.customer_id, count (f.film_id)
+    from (
+            select film_id , title , special_features 
+            from film 
+            where special_features && array ['Behind the Scenes']
+            order by film_id ) f
+     join inventory i on f.film_id = i.film_id 
+     join rental r on i.inventory_id = r.inventory_id 
+     join customer c on r.customer_id = c.customer_id 
+     group by c.customer_id 
+     order by c.customer_id 
+with no data 
+
+refresh materialized view film_c
+
+select *
+from film_c
+
+--ЗАДАНИЕ №6
+--С помощью explain analyze проведите анализ стоимости выполнения запросов из предыдущих заданий и ответьте на вопросы:
+--1. с каким оператором или функцией языка SQL, используемыми при выполнении домашнего задания: 
+--поиск значения в массиве затрачивает меньше ресурсов системы;
+--2. какой вариант вычислений затрачивает меньше ресурсов системы: 
+--с использованием CTE или с использованием подзапроса.
+
+---1 --при использовании операторов &&, @>, <@ при поиске значения в массиве затрачивает одинаковое количество ресурсов системы cost=91.90..93.25
+
+---2. explain analyze с использованием подзапроса затрачивает меньше ресурсов системы cost=832.27..833.77
+с использованием cte cost=878.41..879.91 
+
+
+--======== ДОПОЛНИТЕЛЬНАЯ ЧАСТЬ ==============
+
+--ЗАДАНИЕ №1
+--Выполняйте это задание в форме ответа на сайте Нетологии
+
+--Задание 1. Откройте по ссылке SQL-запрос.
+--Сделайте explain analyze этого запроса.
+---Основываясь на описании запроса, найдите узкие места и опишите их.
+--Сравните с вашим запросом из основной части (если ваш запрос изначально укладывается в 15мс — отлично!).
+---Сделайте построчное описание explain analyze на русском языке оптимизированного запроса. Описание строк в explain можно посмотреть по ссылке.
+---https://use-the-index-luke.com/sql/explain-plan/postgresql/operations
+
+explain (analyze, format json)  ---62.99 Время выполнения (мс), 0.73 Время планирования (мс), 24.31 Самый медленный узел (мс), 9,768 Самый большой узел (строки), 114.52 Самый дорогостоящий узел
+--- узким местом является левое соединение (ВЛОЖЕННЫЙ ЦИКЛ24,31мс | 39 % Левое соединение), функция unnest
+select distinct cu.first_name  || ' ' || cu.last_name as name, 
+	count(ren.iid) over (partition by cu.customer_id)
+from customer cu
+full outer join 
+	(select *, r.inventory_id as iid, inv.sf_string as sfs, r.customer_id as cid
+	from rental r 
+	full outer join 
+		(select *, unnest(f.special_features) as sf_string
+		from inventory i
+		full outer join film f on f.film_id = i.film_id) as inv 
+		on r.inventory_id = inv.inventory_id) as ren 
+	on ren.cid = cu.customer_id 
+where ren.sfs like '%Behind the Scenes%'
+order by count desc
+
+--ЗАДАНИЕ №2
+--Используя оконную функцию выведите для каждого сотрудника
+--сведения о самой первой продаже этого сотрудника.
+
+select p.staff_id, f.film_id, f.title, p.amount, p.payment_date,
+c.last_name as "customer_last_name", 
+c.first_name as "customer_first_name"
+from (
+	select *, row_number() over (partition by staff_id order by payment_date)
+	from payment) p
+left join rental r on p.rental_id = r.rental_id 
+left join inventory i on r.inventory_id = i.inventory_id 
+left join film f on i.film_id = f.film_id 
+left join customer c on c.customer_id = p.customer_id
+where row_number = 1
+
+--ЗАДАНИЕ №3
+--Для каждого магазина определите и выведите одним SQL-запросом следующие аналитические показатели:
+-- 1. день, в который арендовали больше всего фильмов (день в формате год-месяц-день)
+-- 2. количество фильмов взятых в аренду в этот день
+-- 3. день, в который продали фильмов на наименьшую сумму (день в формате год-месяц-день)
+-- 4. сумму продажи в этот день
+
+select r.store_id as "ID магазина", rental_date as "День, в который арендовали больше всего фильмов", 
+r.count as "Количество фильмов, взятых в аренду", 
+payment_date as "День, в который прдали фильмов на наименьшую сумму", 
+p.sum as "Сумма продажи в этот день"
+from (
+	select i.store_id, r.rental_date::date, count(r.rental_id),
+		row_number() over (partition by i.store_id order by count(r.rental_id) desc)
+	from rental r
+	join inventory i on r.inventory_id = i.inventory_id
+	group by 1, 2) r
+join (
+	select s.store_id, p.payment_date::date, sum(p.amount),
+		row_number() over (partition by s.store_id order by sum(p.amount))
+	from payment p
+	join staff s on s.staff_id = p.staff_id
+	group by 1, 2) p on r.store_id = p.store_id
+where r.row_number = 1 and p.row_number = 1
